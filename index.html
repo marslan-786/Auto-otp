@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DrissionPage Cloudflare Auto</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; background-color: #1e1e2f; color: #fff; padding: 20px; }
+        .controls { margin: 20px; }
+        button { padding: 12px 24px; font-size: 16px; cursor: pointer; border: none; border-radius: 5px; margin: 5px; font-weight: bold;}
+        #startBtn { background-color: #00d2ff; color: #000; }
+        #stopBtn { background-color: #ff4b4b; color: white; }
+        button:disabled { background-color: #555; color: #888; cursor: not-allowed; }
+        #status { font-size: 22px; font-weight: bold; margin-bottom: 20px; color: #00ffcc; }
+        /* گیلری جہاں نئی تصاویر ایڈ ہوں گی */
+        #gallery { display: flex; flex-direction: column; align-items: center; gap: 15px; margin-top: 20px; height: 60vh; overflow-y: auto; background: #2a2a40; padding: 20px; border-radius: 10px;}
+        .capture-img { max-width: 100%; border: 3px solid #444; border-radius: 8px; box-shadow: 0px 4px 10px rgba(0,0,0,0.5); }
+    </style>
+</head>
+<body>
+    <h2>Railway Cloudflare Automation</h2>
+    <div id="status">Status: Waiting to start...</div>
+    
+    <div class="controls">
+        <button id="startBtn" onclick="sendMessage('start')">Start Browser</button>
+        <button id="stopBtn" onclick="sendMessage('stop')" disabled>Stop Browser</button>
+    </div>
+    
+    <h3>Live Captures History</h3>
+    <div id="gallery"></div>
+
+    <script>
+        // Railway پر HTTPS ہوتا ہے تو wss ورنہ لوکل ہوسٹ پر ws
+        var protocol = window.location.protocol === "https:" ? "wss://" : "ws://";
+        var ws = new WebSocket(protocol + window.location.host + "/ws");
+
+        ws.onmessage = function(event) {
+            var msg = JSON.parse(event.data);
+            
+            // سٹیٹس اپڈیٹ
+            if (msg.status !== undefined) {
+                document.getElementById('status').innerText = "Status: " + msg.status;
+            }
+            
+            // بٹنز کا کنٹرول (اگر پیج ریفریش بھی ہو تو کرنٹ سٹیٹ اٹھا لے گا)
+            if (msg.is_running !== undefined) {
+                document.getElementById('startBtn').disabled = msg.is_running;
+                document.getElementById('stopBtn').disabled = !msg.is_running;
+            }
+
+            // نئی تصویر ایڈ کرنا (Append)
+            if (msg.image !== undefined && msg.image !== null) {
+                var newImg = document.createElement("img");
+                newImg.src = msg.image;
+                newImg.className = "capture-img";
+                
+                var gallery = document.getElementById('gallery');
+                
+                // prepend کی وجہ سے نئی تصویر سب سے اوپر آئے گی
+                gallery.prepend(newImg); 
+                
+                // میموری بچانے کے لیے اگر 50 سے زیادہ تصاویر ہو جائیں تو پرانی ڈیلیٹ کر دیں
+                if (gallery.children.length > 50) {
+                    gallery.removeChild(gallery.lastChild);
+                }
+            }
+        };
+
+        function sendMessage(action) {
+            ws.send(action);
+        }
+    </script>
+</body>
+</html>
