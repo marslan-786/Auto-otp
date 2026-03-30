@@ -6,7 +6,7 @@ import traceback
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from DrissionPage import ChromiumPage, ChromiumOptions
-from pyvirtualdisplay import Display  # 👈 ورچوئل سکرین کے لیے
+from pyvirtualdisplay import Display  
 import uvicorn
 
 app = FastAPI()
@@ -24,7 +24,7 @@ def drission_thread():
     state["is_running"] = True
     state["status"] = "Starting Virtual Display & Browser..."
     
-    # 🚨 1. ورچوئل مانیٹر آن کریں (1920x1080 فل ایچ ڈی ریزولوشن کے ساتھ)
+    # ورچوئل مانیٹر آن کریں (فلو ایچ ڈی ریزولوشن کے ساتھ)
     display = Display(visible=0, size=(1920, 1080))
     display.start()
     print("[LOG] 🖥️ Virtual Monitor (Xvfb) ON ho gaya!")
@@ -33,13 +33,12 @@ def drission_thread():
         co = ChromiumOptions()
         co.set_browser_path("/usr/bin/chromium")
         
-        # 🚨 2. اب ہم Headless FALSE کر رہے ہیں! (کیونکہ اب ہمارے پاس نقلی سکرین ہے)
+        # Headless FALSE (کیونکہ نقلی سکرین موجود ہے)
         co.headless(False)  
         
-        # اینٹی ڈیٹیکشن فلیگز
         co.set_argument('--no-sandbox')
         co.set_argument('--disable-dev-shm-usage')
-        co.set_argument('--disable-blink-features=AutomationControlled') # بوٹ ڈیٹیکشن کو بائی پاس کرنے کے لیے
+        co.set_argument('--disable-blink-features=AutomationControlled') 
         co.set_argument('--window-size=1920,1080')
         
         print("[LOG] 🚀 Chromium Browser (HEADFUL MODE) launch ho raha hai...")
@@ -53,10 +52,6 @@ def drission_thread():
         loop_count = 1
         while state["is_running"]:
             try:
-                b64 = page.get_screenshot(as_base64=True)
-                if b64:
-                    state["latest_image"] = f"data:image/jpeg;base64,{b64}"
-                
                 # چیک 1: کیا سکسیس ہو گیا؟
                 if page.ele('text:Success!', timeout=0.5):
                     print("[LOG] 🎉 CAPTCHA SUCCESS HO GAYA!")
@@ -70,25 +65,54 @@ def drission_thread():
                     verify_text = cf_iframe.ele('text:Verify you are human', timeout=1)
                     if verify_text:
                         print("[LOG] 🎯 Text 'Verify you are human' mil gaya!")
-                        print("[LOG] 🖱️ Human-like mouse movement: Text ke left side par click kar rahe hain...")
                         
-                        # असली انسانوں کی طرح ماؤس موو کروائیں: ٹیکسٹ پر جائیں -> 40 پکسل لیفٹ ہوں -> کلک کریں
-                        page.actions.move_to(verify_text).move(offset_x=-40).click()
+                        # ایلیمنٹ کا مقام حاصل کریں: یہ iframe کے اندر ہے
+                        text_coords = verify_text.locations.mid_location
+                        
+                        # iframe کا مقام حاصل کریں: یہ پیج پر ہے
+                        iframe_coords = cf_iframe.locations.mid_location
+                        
+                        # ٹارگٹ کے مقام کا حساب لگائیں (متن کے وسط سے 40 پکسل بائیں)
+                        target_x = text_coords[0] + iframe_coords[0] - 40
+                        target_y = text_coords[1] + iframe_coords[1]
+                        
+                        print(f"[LOG] 🎯 Target Coordinates calculated: ({target_x}, {target_y})")
+                        
+                        # جاوا اسکرپٹ کے ذریعے پیج پر ایک عارضی ریڈ ڈاٹ ڈرا کریں (تاکہ بصری طور پر پتہ چلے)
+                        dot_size = 20
+                        js_dot = f"const div = document.createElement('div'); div.style.position = 'absolute'; div.style.top = '{target_y - dot_size/2}px'; div.style.left = '{target_x - dot_size/2}px'; div.style.width = '{dot_size}px'; div.style.height = '{dot_size}px'; div.style.backgroundColor = 'red'; div.style.borderRadius = '50%'; div.style.zIndex = '9999'; document.body.appendChild(div); setTimeout(() => document.body.removeChild(div), 1000);"
+                        page.run_js(js_dot)
+                        
+                        # سکرین شاٹ لے کر بھیجیں (ریڈ ڈاٹ کے ساتھ)
+                        b64 = page.get_screenshot(as_base64=True)
+                        if b64:
+                            state["latest_image"] = f"data:image/jpeg;base64,{b64}"
+                        
+                        print("[LOG] 🖱️ Human-like mouse movement: Click karne se pehle red dot dikha rahe hain...")
+                        
+                        # اصلی انسانوں کی طرح ماؤس موو کروائیں: نشانہ پر جائیں -> کلک کریں
+                        page.actions.move_to_coords(target_x, target_y).click()
                         time.sleep(4) # کلک کرنے کے بعد 4 سیکنڈ ویٹ تاکہ وہ پروسیس کرے
                     else:
                         # اگر ٹیکسٹ نہ ملے تو بیک اپ کے طور پر سیدھا باڈی کے لیفٹ پر کلک کریں
                         box = cf_iframe.ele('tag:body', timeout=1) 
                         if box:
                             print("[LOG] ⚠️ Text nahi mila, body ke left par click kar rahe hain...")
+                            # یہاں ہم ڈاٹ نہیں بنائیں گے، سیدھا کلک کریں گے
                             page.actions.move_to(box).move(offset_x=-40).click()
                             time.sleep(4)
-                            
+                
+                # اگر کلاؤڈ فلیر کا وجیٹ نہیں ہے تو بس سکرین شاٹ لے کر بھیجیں
+                elif loop_count % 2 == 0:
+                     b64 = page.get_screenshot(as_base64=True)
+                     if b64:
+                        state["latest_image"] = f"data:image/jpeg;base64,{b64}"
+
             except Exception as inner_e:
                 pass 
             
             time.sleep(1)
             loop_count += 1
-
             
     except Exception as e:
         print("\n[CRITICAL ERROR] ❌ Browser ya Display error:")
@@ -98,7 +122,7 @@ def drission_thread():
         print("[LOG] 🛑 Closing Browser and Display...")
         try:
             page.quit()
-            display.stop() # ورچوئل مانیٹر بھی بند کریں
+            display.stop() 
         except:
             pass
         state["is_running"] = False
