@@ -20,7 +20,6 @@ state = {
 active_connections = []
 
 def take_instant_screenshot(page):
-    """ایک فوری اسکرین شاٹ لے کر اسٹیٹ میں سیٹ کرنے کا فنکشن"""
     try:
         b64 = page.get_screenshot(as_base64=True)
         if b64:
@@ -50,52 +49,75 @@ def drission_thread():
         state["status"] = "Launching Browser..."
         page = ChromiumPage(co)
         
-        # 🚨 پہلا اسکرین شاٹ براؤزر کھلتے ہی!
         take_instant_screenshot(page)
         print("[LOG] ✅ Initial Screenshot Captured!")
 
-        # یو آر ایل پر جانے سے پہلے اسٹیٹس اپڈیٹ
         state["status"] = "Navigating to Website..."
-        
-        # ویب سائٹ لوڈ کرنا شروع کریں (اسے تھریڈ میں نہیں ڈال سکتے، لیکن ہم لوپ میں شاٹس لیں گے)
-        # DrissionPage کا get بلاکنگ ہے، اس لیے ہم پہلے ہی شاٹ لے چکے ہیں
-        page.get('https://www.smartinmate.com/activate-account-phone.cfm', retry=3, timeout=20)
+        page.get('https://www.smartinmate.com/activate-account-phone.cfm')
         
         loop_count = 1
         while state["is_running"]:
-            # 🚨 لوپ کے شروع میں ہی اسکرین شاٹ
             take_instant_screenshot(page)
-            
             state["status"] = "Page Loaded. Checking Captcha..."
 
             try:
-                # کلاؤڈ فلیر چیک کریں
+                # 1. سکسیس چیک کریں
                 if page.ele('text:Success!', timeout=0.1):
                     state["status"] = "Captcha Success!"
-                    take_instant_screenshot(page) # آخری کامیابی والا شاٹ
+                    take_instant_screenshot(page) 
                     break
                 
-                cf_iframe = page.get_frame('@src^https://challenges.cloudflare.com', timeout=0.5)
-                if cf_iframe:
-                    verify_text = cf_iframe.ele('text:Verify you are human', timeout=0.5)
-                    if verify_text:
-                        # ریڈ ڈاٹ ڈرا کریں
-                        js_dot = "let d=document.createElement('div');d.style.cssText='position:absolute;left:20px;top:50%;width:20px;height:20px;background:red;border-radius:50%;z-index:9999';document.body.appendChild(d);setTimeout(()=>d.remove(),2000);"
-                        cf_iframe.run_js(js_dot)
-                        
-                        # ڈاٹ کے ساتھ شاٹ
-                        time.sleep(0.2)
-                        take_instant_screenshot(page)
-                        
-                        # کلک کریں
-                        verify_text.click(offset_x=-45)
-                        state["status"] = "Clicked! Waiting for result..."
-                        time.sleep(3)
+                # 2. 🚨 نیا لاجک: ہم فریم کے اندر نہیں جائیں گے، بس مین پیج پر فریم کا ایلیمنٹ پکڑیں گے
+                cf_widget = page.ele('xpath://iframe[contains(@src, "challenges.cloudflare.com")]', timeout=0.5)
+                
+                if cf_widget:
+                    print("[LOG] 🎯 Cloudflare ka dabba bahar se pakar liya!")
+                    
+                    # ڈبے کی پوزیشن اور سائز حاصل کریں
+                    loc = cf_widget.rect.viewport_location # (x, y)
+                    size = cf_widget.rect.size # (width, height)
+                    
+                    # نشانہ سیٹ کریں: ڈبے کے اندر لیفٹ سائیڈ سے 30 پکسل آگے، اور بالکل درمیان میں (یہاں چیک باکس ہوتا ہے)
+                    target_x = loc[0] + 30
+                    target_y = loc[1] + (size[1] / 2)
+                    
+                    print(f"[LOG] 🎯 Coordinates set: X={target_x}, Y={target_y}")
+                    
+                    # 🔴 مین پیج کے اوپر ریڈ ڈاٹ بنائیں (تاکہ کلاؤڈ فلیر بلاک نہ کر سکے)
+                    js_dot = f"""
+                    let d = document.createElement('div');
+                    d.id = 'my-red-dot';
+                    d.style.position = 'fixed';
+                    d.style.left = '{target_x - 10}px'; /* center the dot */
+                    d.style.top = '{target_y - 10}px';
+                    d.style.width = '20px';
+                    d.style.height = '20px';
+                    d.style.backgroundColor = 'red';
+                    d.style.border = '2px solid black';
+                    d.style.borderRadius = '50%';
+                    d.style.zIndex = '999999';
+                    d.style.pointerEvents = 'none'; /* کلک اس کے آر پار ہو جائے گا */
+                    document.body.appendChild(d);
+                    setTimeout(() => d.remove(), 2000);
+                    """
+                    page.run_js(js_dot)
+                    
+                    # ڈاٹ بنتے ہی سکرین شاٹ لیں
+                    time.sleep(0.3)
+                    take_instant_screenshot(page)
+                    state["status"] = "Red Dot placed! Clicking now..."
+                    print("[LOG] 🖱️ Red dot ban gaya, ab thik wahan click maar rahe hain!")
+                    
+                    # اصلی ماؤس کو سیدھا ان کوآرڈینیٹس پر لے جا کر کلک ماریں
+                    page.actions.move_to_location(target_x, target_y).click()
+                    
+                    state["status"] = "Clicked! Waiting for result..."
+                    time.sleep(4) # کلک کرنے کے بعد 4 سیکنڈ انتظار
 
             except Exception as e:
-                print(f"[DEBUG] Loop error: {e}")
+                pass
             
-            time.sleep(0.8) # فیڈ کو تیز رکھنے کے لیے تھوڑا کم وقفہ
+            time.sleep(0.8)
             loop_count += 1
             
     except Exception as e:
@@ -112,7 +134,7 @@ def drission_thread():
         if state["status"] != "Captcha Success!":
             state["status"] = "Stopped"
 
-# باقی FastAPI کا کوڈ وہی رہے گا...
+# ... (FastAPI routes aur websocket setup yahan neechay wese hi rahenge) ...
 
 @app.get("/")
 async def get():
@@ -124,7 +146,6 @@ async def status_broadcaster():
         if active_connections:
             message = {"status": state["status"], "is_running": state["is_running"]}
             
-            # صرف تب بھیجیں جب نئی تصویر ہو
             if state["latest_image"] != last_image:
                 message["image"] = state["latest_image"]
                 last_image = state["latest_image"]
@@ -134,7 +155,7 @@ async def status_broadcaster():
                     await connection.send_json(message)
                 except:
                     pass
-        await asyncio.sleep(0.4) # براڈکاسٹ کی رفتار تھوڑی تیز
+        await asyncio.sleep(0.4)
 
 @app.on_event("startup")
 async def startup_event():
