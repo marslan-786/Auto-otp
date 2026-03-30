@@ -1,21 +1,30 @@
-# پائتھن کا ہلکا پھلکا ورژن
+# پائتھن کا ورژن
 FROM python:3.11-slim
 
-# ورکنگ ڈائریکٹری سیٹ کریں
+# ورکنگ ڈائریکٹری
 WORKDIR /app
 
-# کرومیم اور اس کی ضروری فائلیں انسٹال کریں
+# کلاؤڈ فلیر کو بائی پاس کرنے کے لیے اصلی کرومیم اور ورچوئل ڈسپلے (Xvfb) انسٹال کریں
 RUN apt-get update && apt-get install -y \
     chromium \
     chromium-driver \
+    xvfb \
+    x11-utils \
+    libnss3 \
+    libxcomposite1 \
+    libxrandr2 \
+    libxdamage1 \
+    libxkbcommon0 \
+    libgbm1 \
+    libasound2 \
     && rm -rf /var/lib/apt/lists/*
 
-# ریکوائرمنٹس کاپی کریں اور انسٹال کریں
+# ریکوائرمنٹس انسٹال کریں
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# باقی سارا کوڈ کاپی کریں
+# سارا کوڈ کاپی کریں
 COPY . .
 
-# سرور چلانے کی کمانڈ
+# سرور سٹارٹ کریں
 CMD uvicorn main:app --host 0.0.0.0 --port ${PORT:-8080}
