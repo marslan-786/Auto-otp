@@ -19,107 +19,90 @@ state = {
 
 active_connections = []
 
+def take_instant_screenshot(page):
+    """ایک فوری اسکرین شاٹ لے کر اسٹیٹ میں سیٹ کرنے کا فنکشن"""
+    try:
+        b64 = page.get_screenshot(as_base64=True)
+        if b64:
+            state["latest_image"] = f"data:image/jpeg;base64,{b64}"
+            return True
+    except:
+        pass
+    return False
+
 def drission_thread():
-    print("\n[LOG] 🟢 Heavy Duty DrissionPage Thread Start ho gaya hai!")
+    print("\n[LOG] 🟢 Super Fast Live Feed Thread Start!")
     state["is_running"] = True
-    state["status"] = "Starting Virtual Display & Browser..."
+    state["status"] = "Starting Monitor..."
     
-    # ورچوئل مانیٹر آن کریں (فلو ایچ ڈی ریزولوشن کے ساتھ)
     display = Display(visible=0, size=(1920, 1080))
     display.start()
-    print("[LOG] 🖥️ Virtual Monitor (Xvfb) ON ho gaya!")
 
     try:
         co = ChromiumOptions()
         co.set_browser_path("/usr/bin/chromium")
-        
-        # Headless FALSE (کیونکہ نقلی سکرین موجود ہے)
         co.headless(False)  
-        
         co.set_argument('--no-sandbox')
         co.set_argument('--disable-dev-shm-usage')
         co.set_argument('--disable-blink-features=AutomationControlled') 
         co.set_argument('--window-size=1920,1080')
         
-        print("[LOG] 🚀 Chromium Browser (HEADFUL MODE) launch ho raha hai...")
+        state["status"] = "Launching Browser..."
         page = ChromiumPage(co)
-        print("[LOG] ✅ Browser launch ho gaya!")
+        
+        # 🚨 پہلا اسکرین شاٹ براؤزر کھلتے ہی!
+        take_instant_screenshot(page)
+        print("[LOG] ✅ Initial Screenshot Captured!")
 
-        target_url = 'https://www.smartinmate.com/activate-account-phone.cfm'
-        page.get(target_url)
-        state["status"] = "Page Loaded. Bypassing Cloudflare..."
+        # یو آر ایل پر جانے سے پہلے اسٹیٹس اپڈیٹ
+        state["status"] = "Navigating to Website..."
+        
+        # ویب سائٹ لوڈ کرنا شروع کریں (اسے تھریڈ میں نہیں ڈال سکتے، لیکن ہم لوپ میں شاٹس لیں گے)
+        # DrissionPage کا get بلاکنگ ہے، اس لیے ہم پہلے ہی شاٹ لے چکے ہیں
+        page.get('https://www.smartinmate.com/activate-account-phone.cfm', retry=3, timeout=20)
         
         loop_count = 1
         while state["is_running"]:
+            # 🚨 لوپ کے شروع میں ہی اسکرین شاٹ
+            take_instant_screenshot(page)
+            
+            state["status"] = "Page Loaded. Checking Captcha..."
+
             try:
-                # چیک 1: کیا سکسیس ہو گیا؟
-                if page.ele('text:Success!', timeout=0.5):
-                    print("[LOG] 🎉 CAPTCHA SUCCESS HO GAYA!")
+                # کلاؤڈ فلیر چیک کریں
+                if page.ele('text:Success!', timeout=0.1):
                     state["status"] = "Captcha Success!"
+                    take_instant_screenshot(page) # آخری کامیابی والا شاٹ
                     break
                 
-                # چیک 2: کلاؤڈ فلیر کا باکس ہینڈل کرنا (آپ کے آئیڈیا کے مطابق)
                 cf_iframe = page.get_frame('@src^https://challenges.cloudflare.com', timeout=0.5)
                 if cf_iframe:
-                    # 1. پہلے وہ ٹیکسٹ ڈھونڈیں
-                    verify_text = cf_iframe.ele('text:Verify you are human', timeout=1)
+                    verify_text = cf_iframe.ele('text:Verify you are human', timeout=0.5)
                     if verify_text:
-                        print("[LOG] 🎯 Text 'Verify you are human' mil gaya!")
+                        # ریڈ ڈاٹ ڈرا کریں
+                        js_dot = "let d=document.createElement('div');d.style.cssText='position:absolute;left:20px;top:50%;width:20px;height:20px;background:red;border-radius:50%;z-index:9999';document.body.appendChild(d);setTimeout(()=>d.remove(),2000);"
+                        cf_iframe.run_js(js_dot)
                         
-                        # ایلیمنٹ کا مقام حاصل کریں: یہ iframe کے اندر ہے
-                        text_coords = verify_text.locations.mid_location
+                        # ڈاٹ کے ساتھ شاٹ
+                        time.sleep(0.2)
+                        take_instant_screenshot(page)
                         
-                        # iframe کا مقام حاصل کریں: یہ پیج پر ہے
-                        iframe_coords = cf_iframe.locations.mid_location
-                        
-                        # ٹارگٹ کے مقام کا حساب لگائیں (متن کے وسط سے 40 پکسل بائیں)
-                        target_x = text_coords[0] + iframe_coords[0] - 40
-                        target_y = text_coords[1] + iframe_coords[1]
-                        
-                        print(f"[LOG] 🎯 Target Coordinates calculated: ({target_x}, {target_y})")
-                        
-                        # جاوا اسکرپٹ کے ذریعے پیج پر ایک عارضی ریڈ ڈاٹ ڈرا کریں (تاکہ بصری طور پر پتہ چلے)
-                        dot_size = 20
-                        js_dot = f"const div = document.createElement('div'); div.style.position = 'absolute'; div.style.top = '{target_y - dot_size/2}px'; div.style.left = '{target_x - dot_size/2}px'; div.style.width = '{dot_size}px'; div.style.height = '{dot_size}px'; div.style.backgroundColor = 'red'; div.style.borderRadius = '50%'; div.style.zIndex = '9999'; document.body.appendChild(div); setTimeout(() => document.body.removeChild(div), 1000);"
-                        page.run_js(js_dot)
-                        
-                        # سکرین شاٹ لے کر بھیجیں (ریڈ ڈاٹ کے ساتھ)
-                        b64 = page.get_screenshot(as_base64=True)
-                        if b64:
-                            state["latest_image"] = f"data:image/jpeg;base64,{b64}"
-                        
-                        print("[LOG] 🖱️ Human-like mouse movement: Click karne se pehle red dot dikha rahe hain...")
-                        
-                        # اصلی انسانوں کی طرح ماؤس موو کروائیں: نشانہ پر جائیں -> کلک کریں
-                        page.actions.move_to_coords(target_x, target_y).click()
-                        time.sleep(4) # کلک کرنے کے بعد 4 سیکنڈ ویٹ تاکہ وہ پروسیس کرے
-                    else:
-                        # اگر ٹیکسٹ نہ ملے تو بیک اپ کے طور پر سیدھا باڈی کے لیفٹ پر کلک کریں
-                        box = cf_iframe.ele('tag:body', timeout=1) 
-                        if box:
-                            print("[LOG] ⚠️ Text nahi mila, body ke left par click kar rahe hain...")
-                            # یہاں ہم ڈاٹ نہیں بنائیں گے، سیدھا کلک کریں گے
-                            page.actions.move_to(box).move(offset_x=-40).click()
-                            time.sleep(4)
-                
-                # اگر کلاؤڈ فلیر کا وجیٹ نہیں ہے تو بس سکرین شاٹ لے کر بھیجیں
-                elif loop_count % 2 == 0:
-                     b64 = page.get_screenshot(as_base64=True)
-                     if b64:
-                        state["latest_image"] = f"data:image/jpeg;base64,{b64}"
+                        # کلک کریں
+                        verify_text.click(offset_x=-45)
+                        state["status"] = "Clicked! Waiting for result..."
+                        time.sleep(3)
 
-            except Exception as inner_e:
-                pass 
+            except Exception as e:
+                print(f"[DEBUG] Loop error: {e}")
             
-            time.sleep(1)
+            time.sleep(0.8) # فیڈ کو تیز رکھنے کے لیے تھوڑا کم وقفہ
             loop_count += 1
             
     except Exception as e:
-        print("\n[CRITICAL ERROR] ❌ Browser ya Display error:")
+        print(f"[CRITICAL] Error: {e}")
         traceback.print_exc()
         state["status"] = f"Error: {str(e)}"
     finally:
-        print("[LOG] 🛑 Closing Browser and Display...")
         try:
             page.quit()
             display.stop() 
@@ -128,35 +111,30 @@ def drission_thread():
         state["is_running"] = False
         if state["status"] != "Captcha Success!":
             state["status"] = "Stopped"
-        print("[LOG] 🔴 Thread execution mukammal ho gayi.\n")
+
+# باقی FastAPI کا کوڈ وہی رہے گا...
 
 @app.get("/")
 async def get():
     return FileResponse("index.html")
 
 async def status_broadcaster():
-    last_status = None
     last_image = None
     while True:
         if active_connections:
-            message = {}
-            if state["status"] != last_status:
-                message["status"] = state["status"]
-                last_status = state["status"]
+            message = {"status": state["status"], "is_running": state["is_running"]}
             
+            # صرف تب بھیجیں جب نئی تصویر ہو
             if state["latest_image"] != last_image:
                 message["image"] = state["latest_image"]
                 last_image = state["latest_image"]
-                
-            message["is_running"] = state["is_running"]
-
-            if message:
-                for connection in active_connections:
-                    try:
-                        await connection.send_json(message)
-                    except:
-                        pass
-        await asyncio.sleep(0.5)
+            
+            for connection in active_connections:
+                try:
+                    await connection.send_json(message)
+                except:
+                    pass
+        await asyncio.sleep(0.4) # براڈکاسٹ کی رفتار تھوڑی تیز
 
 @app.on_event("startup")
 async def startup_event():
@@ -166,11 +144,6 @@ async def startup_event():
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     active_connections.append(websocket)
-    await websocket.send_json({
-        "status": state["status"],
-        "is_running": state["is_running"]
-    })
-    
     try:
         while True:
             data = await websocket.receive_text()
@@ -178,7 +151,6 @@ async def websocket_endpoint(websocket: WebSocket):
                 threading.Thread(target=drission_thread, daemon=True).start()
             elif data == "stop" and state["is_running"]:
                 state["is_running"] = False 
-                state["status"] = "Stopping..."
     except WebSocketDisconnect:
         active_connections.remove(websocket)
 
