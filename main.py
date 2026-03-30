@@ -50,7 +50,7 @@ def drission_thread():
         page.get(target_url)
         state["status"] = "Page Loaded. Bypassing Cloudflare..."
         
-                loop_count = 1
+        loop_count = 1
         while state["is_running"]:
             try:
                 b64 = page.get_screenshot(as_base64=True)
