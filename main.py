@@ -50,10 +50,9 @@ def drission_thread():
         page.get(target_url)
         state["status"] = "Page Loaded. Bypassing Cloudflare..."
         
-        loop_count = 1
+                loop_count = 1
         while state["is_running"]:
             try:
-                # سکرین شاٹ لے کر بھیجیں
                 b64 = page.get_screenshot(as_base64=True)
                 if b64:
                     state["latest_image"] = f"data:image/jpeg;base64,{b64}"
@@ -64,20 +63,32 @@ def drission_thread():
                     state["status"] = "Captcha Success!"
                     break
                 
-                # چیک 2: اگر کلاؤڈ فلیر کا چیک باکس آ گیا ہے تو اس پر کلک کریں
+                # چیک 2: کلاؤڈ فلیر کا باکس ہینڈل کرنا (آپ کے آئیڈیا کے مطابق)
                 cf_iframe = page.get_frame('@src^https://challenges.cloudflare.com', timeout=0.5)
                 if cf_iframe:
-                    box = cf_iframe.ele('tag:body', timeout=1) 
-                    if box:
-                        print("[LOG] ⚠️ Cloudflare Box detected! Auto-clicking...")
-                        box.click()  # 🖱️ ماؤس سے کلک
-                        time.sleep(2) # کلک کرنے کے بعد 2 سیکنڈ ویٹ تاکہ وہ پروسیس کرے
+                    # 1. پہلے وہ ٹیکسٹ ڈھونڈیں
+                    verify_text = cf_iframe.ele('text:Verify you are human', timeout=1)
+                    if verify_text:
+                        print("[LOG] 🎯 Text 'Verify you are human' mil gaya!")
+                        print("[LOG] 🖱️ Human-like mouse movement: Text ke left side par click kar rahe hain...")
                         
+                        # असली انسانوں کی طرح ماؤس موو کروائیں: ٹیکسٹ پر جائیں -> 40 پکسل لیفٹ ہوں -> کلک کریں
+                        page.actions.move_to(verify_text).move(offset_x=-40).click()
+                        time.sleep(4) # کلک کرنے کے بعد 4 سیکنڈ ویٹ تاکہ وہ پروسیس کرے
+                    else:
+                        # اگر ٹیکسٹ نہ ملے تو بیک اپ کے طور پر سیدھا باڈی کے لیفٹ پر کلک کریں
+                        box = cf_iframe.ele('tag:body', timeout=1) 
+                        if box:
+                            print("[LOG] ⚠️ Text nahi mila, body ke left par click kar rahe hain...")
+                            page.actions.move_to(box).move(offset_x=-40).click()
+                            time.sleep(4)
+                            
             except Exception as inner_e:
-                pass # چھوٹے موٹے ایررز کو اگنور کریں تاکہ لوپ چلتا رہے
+                pass 
             
             time.sleep(1)
             loop_count += 1
+
             
     except Exception as e:
         print("\n[CRITICAL ERROR] ❌ Browser ya Display error:")
